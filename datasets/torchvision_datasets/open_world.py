@@ -27,30 +27,30 @@ BASE_VOC_CLASS_NAMES = [
 ]
 
 VOC_CLASS_NAMES = [
-    "aeroplane","bicycle","bird","boat","bus","car",
-    "cat","cow","dog","horse","motorbike","sheep","train",
-    "elephant","bear","zebra","giraffe","truck","person"
+    "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat",
+    "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person",
+    "pottedplant", "sheep", "sofa", "train", "tvmonitor"
 ]
 
 T2_CLASS_NAMES = [
-    "traffic light","fire hydrant","stop sign",
-    "parking meter","bench","chair","diningtable",
-    "pottedplant","backpack","umbrella","handbag",
-    "tie","suitcase","microwave","oven","toaster","sink",
-    "refrigerator","bed","toilet","sofa"
+    "truck", "traffic light", "fire hydrant", "stop sign", "parking meter",
+    "bench", "elephant", "bear", "zebra", "giraffe",
+    "backpack", "umbrella", "handbag", "tie", "suitcase",
+    "microwave", "oven", "toaster", "sink", "refrigerator"
 ]
 
 T3_CLASS_NAMES = [
-    "frisbee","skis","snowboard","sports ball",
-    "kite","baseball bat","baseball glove","skateboard",
-    "surfboard","tennis racket","banana","apple","sandwich",
-    "orange","broccoli","carrot","hot dog","pizza","donut","cake"
+    "frisbee", "skis", "snowboard", "sports ball", "kite",
+    "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket",
+    "banana", "apple", "sandwich", "orange", "broccoli",
+    "carrot", "hot dog", "pizza", "donut", "cake"
 ]
 
 T4_CLASS_NAMES = [
-    "laptop","mouse","remote","keyboard","cell phone","book",
-    "clock","vase","scissors","teddy bear","hair drier","toothbrush",
-    "wine glass","cup","fork","knife","spoon","bowl","tvmonitor","bottle"
+    "bed", "toilet", "laptop", "mouse",
+    "remote", "keyboard", "cell phone", "book", "clock",
+    "vase", "scissors", "teddy bear", "hair drier", "toothbrush",
+    "wine glass", "cup", "fork", "knife", "spoon", "bowl"
 ]
 
 UNK_CLASS = ["unknown"]
