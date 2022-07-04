@@ -107,7 +107,7 @@ def get_args_parser():
                         help='start epoch')
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--viz', action='store_true')
-    parser.add_argument('--eval_every', default=1, type=int)
+    parser.add_argument('--eval_every', default=12, type=int)
     parser.add_argument('--num_workers', default=2, type=int)
     parser.add_argument('--cache_mode', default=False, action='store_true', help='whether to cache images on memory')
 
@@ -226,6 +226,15 @@ def main(args):
         checkpoint = torch.load(args.frozen_weights, map_location='cpu')
         model_without_ddp.detr.load_state_dict(checkpoint['model'])
 
+        ## use knowledge transfer for incremental learning
+        ## when novel classes are available, only update weights of bbox_embed,
+        ## nc_class_embed and part of class_embed
+        for param in model_without_ddp.parameters():
+            if "bbox_embed" in param or "class_embed" in param:
+                param.requires_grad = True
+
+        frozen_class_weights = model_without_ddp.detr["class_embed"][:,:args.PREV_INTRODUCED_CLS] 
+
     output_dir = Path(args.output_dir)
 
     if args.pretrain:
@@ -288,6 +297,10 @@ def main(args):
         train_stats = train_one_epoch(
             model, criterion, data_loader_train, optimizer, device, epoch, args.nc_epoch, args.clip_max_norm)
         lr_scheduler.step()
+
+        if args.frozen_weights is not None:
+            model.detr["class_embed"][:,:args.PREV_INTRODUCED_CLS] = frozen_class_weights 
+
         if args.output_dir:
             checkpoint_paths = [output_dir / 'checkpoint.pth']
             # extra checkpoint before LR drop and every 5 epochs
@@ -337,8 +350,6 @@ def main(args):
 def get_datasets(args):
     print(args.dataset)
     if args.dataset == 'owod':
-        train_set = args.train_set
-        test_set = args.test_set
         dataset_train = OWDetection(args, args.owod_path, ["2007"], image_sets=[args.train_set], transforms=make_coco_transforms(args.train_set))
         dataset_val = OWDetection(args, args.owod_path, ["2007"], image_sets=[args.test_set], transforms=make_coco_transforms(args.test_set))
     else:
