@@ -48,6 +48,8 @@ def get_args_parser():
     # Model parameters
     parser.add_argument('--frozen_weights', type=str, default=None,
                         help="Path to the pretrained model. If set, only the mask head will be trained")
+    parser.add_argument('--incremental', action='store_true',
+                        help="incremental learn flag")
     parser.add_argument('--dilation', action='store_true',
                         help="If true, we replace stride with dilation in the last convolutional block (DC5)")
     parser.add_argument('--position_embedding', default='sine', type=str, choices=('sine', 'learned'),
@@ -135,8 +137,8 @@ def main(args):
     utils.init_distributed_mode(args)
     print("git:\n  {}\n".format(utils.get_sha()))
 
-    if args.frozen_weights is not None:
-        assert args.masks, "Frozen training is meant for segmentation only"
+    # if args.frozen_weights is not None:
+    #     assert args.masks, "Frozen training is meant for segmentation only"
     print(args)
 
     device = torch.device(args.device)
@@ -224,16 +226,7 @@ def main(args):
 
     if args.frozen_weights is not None:
         checkpoint = torch.load(args.frozen_weights, map_location='cpu')
-        model_without_ddp.detr.load_state_dict(checkpoint['model'])
-
-        ## use knowledge transfer for incremental learning
-        ## when novel classes are available, only update weights of bbox_embed,
-        ## nc_class_embed and part of class_embed
-        for param in model_without_ddp.parameters():
-            if "bbox_embed" in param or "class_embed" in param:
-                param.requires_grad = True
-
-        frozen_class_weights = model_without_ddp.detr["class_embed"][:,:args.PREV_INTRODUCED_CLS] 
+        model_without_ddp.deformable_detr.load_state_dict(checkpoint['model'])
 
     output_dir = Path(args.output_dir)
 
@@ -257,6 +250,22 @@ def main(args):
             print('Missing Keys: {}'.format(missing_keys))
         if len(unexpected_keys) > 0:
             print('Unexpected Keys: {}'.format(unexpected_keys))
+
+        if args.incremental:
+          ## use knowledge transfer for incremental learning
+          ## when novel classes are available, only update weights of bbox_embed,
+          ## nc_class_embed and part of class_embed
+          frozen_class_weights = []
+          frozen_class_bias = []
+          for name, param in model_without_ddp.named_parameters():
+              if "bbox_embed" not in name and "class_embed" not in name:
+                  param.requires_grad = False
+              if "class_embed" in name and "nc" not in name:
+                  if "weight" in name:
+                    frozen_class_weights.append(param[:args.PREV_INTRODUCED_CLS])
+                  if "bias" in name:
+                    frozen_class_bias.append(param[:args.PREV_INTRODUCED_CLS])
+
         if not args.eval and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
             import copy
             p_groups = copy.deepcopy(optimizer.param_groups)
@@ -264,7 +273,7 @@ def main(args):
             for pg, pg_old in zip(optimizer.param_groups, p_groups):
                 pg['lr'] = pg_old['lr']
                 pg['initial_lr'] = pg_old['initial_lr']
-            print(optimizer.param_groups)
+            # print(optimizer.param_groups)
             lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             # todo: this is a hack for doing experiment that resume from checkpoint and also modify lr scheduler (e.g., decrease lr in advance).
             args.override_resumed_lr_drop = True
@@ -298,8 +307,14 @@ def main(args):
             model, criterion, data_loader_train, optimizer, device, epoch, args.nc_epoch, args.clip_max_norm)
         lr_scheduler.step()
 
-        if args.frozen_weights is not None:
-            model.detr["class_embed"][:,:args.PREV_INTRODUCED_CLS] = frozen_class_weights 
+        ## get the frozen weights back
+        if args.incremental:
+          for name, param in model_without_ddp.named_parameters():
+              if "class_embed" in name and "nc" not in name:
+                  if "weight" in name:
+                    param[:args.PREV_INTRODUCED_CLS] = frozen_class_weights.pop(0)
+                  if "bias" in name:
+                    param[:args.PREV_INTRODUCED_CLS] = frozen_class_bias.pop(0)
 
         if args.output_dir:
             checkpoint_paths = [output_dir / 'checkpoint.pth']
