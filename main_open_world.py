@@ -127,7 +127,7 @@ def get_args_parser():
     parser.add_argument('--num_classes', default=81, type=int)
     parser.add_argument('--backbone', default='resnet50', type=str, help="Name of the convolutional backbone to use")
     parser.add_argument('--dataset', default='owod')
-    parser.add_argument('--data_root', default='../drive/MyDrive/', type=str)
+    parser.add_argument('--data_root', default='./data/', type=str)
     parser.add_argument('--bbox_thresh', default=0.3, type=float)
     return parser
 
