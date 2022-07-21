@@ -129,7 +129,7 @@ def get_args_parser():
     parser.add_argument('--num_classes', default=81, type=int)
     parser.add_argument('--backbone', default='resnet50', type=str, help="Name of the convolutional backbone to use")
     parser.add_argument('--dataset', default='owod')
-    parser.add_argument('--data_root', default='../drive/MyDrive/', type=str)
+    parser.add_argument('--data_root', default='./data', type=str)
     parser.add_argument('--bbox_thresh', default=0.3, type=float)
     return parser
 
@@ -307,15 +307,6 @@ def main(args):
             model, criterion, data_loader_train, optimizer, device, epoch, args.nc_epoch, args.clip_max_norm)
         lr_scheduler.step()
 
-        ## get the frozen weights back
-        if args.incremental:
-          for name, param in model_without_ddp.named_parameters():
-              if "class_embed" in name and "nc" not in name:
-                  if "weight" in name:
-                    param[:args.PREV_INTRODUCED_CLS] = frozen_class_weights.pop(0)
-                  if "bias" in name:
-                    param[:args.PREV_INTRODUCED_CLS] = frozen_class_bias.pop(0)
-
         if args.output_dir:
             checkpoint_paths = [output_dir / 'checkpoint.pth']
             # extra checkpoint before LR drop and every 5 epochs
@@ -357,6 +348,15 @@ def main(args):
                         for name in filenames:
                             torch.save(coco_evaluator.coco_eval["bbox"].eval,
                                     output_dir / "eval" / name)
+
+     ## get the frozen weights back
+    if args.incremental:
+        for name, param in model_without_ddp.named_parameters():
+            if "class_embed" in name and "nc" not in name:
+                if "weight" in name:
+                    param[:args.PREV_INTRODUCED_CLS] = frozen_class_weights.pop(0)
+                if "bias" in name:
+                    param[:args.PREV_INTRODUCED_CLS] = frozen_class_bias.pop(0)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
