@@ -48,8 +48,8 @@ def get_args_parser():
     # Model parameters
     parser.add_argument('--frozen_weights', type=str, default=None,
                         help="Path to the pretrained model. If set, only the mask head will be trained")
-    parser.add_argument('--incremental', action='store_true',
-                        help="incremental learn flag")
+    parser.add_argument('--incremental', default='',
+                        help="incremental learning checkpoint path")
     parser.add_argument('--dilation', action='store_true',
                         help="If true, we replace stride with dilation in the last convolutional block (DC5)")
     parser.add_argument('--position_embedding', default='sine', type=str, choices=('sine', 'learned'),
@@ -250,22 +250,7 @@ def main(args):
             print('Missing Keys: {}'.format(missing_keys))
         if len(unexpected_keys) > 0:
             print('Unexpected Keys: {}'.format(unexpected_keys))
-
-        if args.incremental:
-          ## use knowledge transfer for incremental learning
-          ## when novel classes are available, only update weights of bbox_embed,
-          ## nc_class_embed and part of class_embed
-          frozen_class_weights = []
-          frozen_class_bias = []
-          for name, param in model_without_ddp.named_parameters():
-              if "bbox_embed" not in name and "class_embed" not in name:
-                  param.requires_grad = False
-              if "class_embed" in name and "nc" not in name:
-                  if "weight" in name:
-                    frozen_class_weights.append(param[:args.PREV_INTRODUCED_CLS])
-                  if "bias" in name:
-                    frozen_class_bias.append(param[:args.PREV_INTRODUCED_CLS])
-
+          
         if not args.eval and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
             import copy
             p_groups = copy.deepcopy(optimizer.param_groups)
@@ -351,12 +336,50 @@ def main(args):
 
      ## get the frozen weights back
     if args.incremental:
-        for name, param in model_without_ddp.named_parameters():
+
+        print('Initialized from the pre-training model')
+        old_model = model
+        checkpoint = torch.load(args.incremental, map_location='cpu')
+        state_dict = checkpoint['model']
+        msg = old_model.load_state_dict(state_dict, strict=False)
+        print(msg)
+
+        ## use knowledge transfer for incremental learning
+        ## when novel classes are available, only update weights of bbox_embed,
+        ## nc_class_embed and part of class_embed
+        frozen_class_weights = []
+        frozen_class_bias = []
+        for name, param in old_model.named_parameters():
+            if "bbox_embed" not in name and "class_embed" not in name:
+                param.requires_grad = False
             if "class_embed" in name and "nc" not in name:
                 if "weight" in name:
-                    param[:args.PREV_INTRODUCED_CLS] = frozen_class_weights.pop(0)
+                    frozen_class_weights.append(param[:args.PREV_INTRODUCED_CLS])
                 if "bias" in name:
-                    param[:args.PREV_INTRODUCED_CLS] = frozen_class_bias.pop(0)
+                    frozen_class_bias.append(param[:args.PREV_INTRODUCED_CLS])
+
+        with torch.no_grad():
+            for name, param in model_without_ddp.named_parameters():
+                if "class_embed" in name and "nc" not in name:
+                    if "weight" in name:
+                        param[:args.PREV_INTRODUCED_CLS] = frozen_class_weights.pop(0)
+                    if "bias" in name:
+                        param[:args.PREV_INTRODUCED_CLS] = frozen_class_bias.pop(0)
+            
+            if args.output_dir:
+                checkpoint_paths = [output_dir / 'checkpoint_m.pth']
+                print(checkpoint_paths)
+                # extra checkpoint before LR drop and every 5 epochs
+                # if (epoch + 1) % args.lr_drop == 0 or (epoch + 1) % 5 == 0:
+                #     checkpoint_paths.append(output_dir / f'checkpoint{epoch:04}.pth')
+                for checkpoint_path in checkpoint_paths:
+                    utils.save_on_master({
+                        'model': model_without_ddp.state_dict(),
+                        'optimizer': optimizer.state_dict(),
+                        'lr_scheduler': lr_scheduler.state_dict(),
+                        'epoch': args.epochs,
+                        'args': args,
+                    }, checkpoint_path)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
