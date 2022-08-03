@@ -338,7 +338,8 @@ def main(args):
     if args.incremental:
 
         print('Initialized from the pre-training model')
-        old_model = model
+        import copy
+        old_model = copy.deepcopy(model)
         checkpoint = torch.load(args.incremental, map_location='cpu')
         state_dict = checkpoint['model']
         msg = old_model.load_state_dict(state_dict, strict=False)
