@@ -187,6 +187,13 @@ def main(args):
                 break
         return out
 
+    if args.frozen_weights is not None:
+        checkpoint = torch.load(args.frozen_weights, map_location='cpu')
+        model_without_ddp.load_state_dict(checkpoint['model'])
+        for name, param in model_without_ddp.named_parameters():
+          if "bbox_embed" not in name and "class_embed" not in name and "transformer" not in name:
+            param.requires_grad = False
+
     param_dicts = [
         {
             "params":
@@ -223,10 +230,6 @@ def main(args):
         base_ds = get_coco_api_from_dataset(dataset_val)
     else:
         base_ds = dataset_val
-
-    if args.frozen_weights is not None:
-        checkpoint = torch.load(args.frozen_weights, map_location='cpu')
-        model_without_ddp.deformable_detr.load_state_dict(checkpoint['model'])
 
     output_dir = Path(args.output_dir)
 
@@ -337,11 +340,10 @@ def main(args):
      ## get the frozen weights back
     if args.incremental:
 
-        print('Initialized from the pre-training model')
         import copy
         old_model = copy.deepcopy(model)
-        checkpoint = torch.load(args.incremental, map_location='cpu')
-        state_dict = checkpoint['model']
+        old_checkpoint = torch.load(args.incremental, map_location='cpu')
+        state_dict = old_checkpoint['model']
         msg = old_model.load_state_dict(state_dict, strict=False)
         print(msg)
 
@@ -355,18 +357,19 @@ def main(args):
                 param.requires_grad = False
             if "class_embed" in name and "nc" not in name:
                 if "weight" in name:
-                    frozen_class_weights.append(param[:args.PREV_INTRODUCED_CLS])
+                    frozen_class_weights.append(param[:args.PREV_INTRODUCED_CLS,:].detach())
                 if "bias" in name:
-                    frozen_class_bias.append(param[:args.PREV_INTRODUCED_CLS])
+                    frozen_class_bias.append(param[:args.PREV_INTRODUCED_CLS].detach())
 
         with torch.no_grad():
             for name, param in model_without_ddp.named_parameters():
                 if "class_embed" in name and "nc" not in name:
                     if "weight" in name:
-                        param[:args.PREV_INTRODUCED_CLS] = frozen_class_weights.pop(0)
+                        param[:args.PREV_INTRODUCED_CLS,:] = copy.deepcopy(frozen_class_weights.pop(0))
                     if "bias" in name:
-                        param[:args.PREV_INTRODUCED_CLS] = frozen_class_bias.pop(0)
-            
+                        print(param[:args.PREV_INTRODUCED_CLS])
+                        param[:args.PREV_INTRODUCED_CLS] = copy.deepcopy(frozen_class_bias.pop(0))
+                        print(param[:args.PREV_INTRODUCED_CLS])
             if args.output_dir:
                 checkpoint_paths = [output_dir / 'checkpoint_m.pth']
                 print(checkpoint_paths)
