@@ -376,10 +376,10 @@ def main(args):
                 for checkpoint_path in checkpoint_paths:
                     utils.save_on_master({
                         'model': model_without_ddp.state_dict(),
-                        'optimizer': optimizer.state_dict(),
-                        'lr_scheduler': lr_scheduler.state_dict(),
-                        'epoch': args.epochs,
-                        'args': args,
+                        'optimizer': checkpoint['optimizer'],
+                        'lr_scheduler': checkpoint['lr_scheduler'],
+                        'epoch': checkpoint['epoch'],
+                        'args': checkpoint['args'],
                     }, checkpoint_path)
 
     total_time = time.time() - start_time
