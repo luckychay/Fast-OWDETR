@@ -193,7 +193,8 @@ def main(args):
         for name, param in model_without_ddp.named_parameters():
           if "bbox_embed" not in name and "class_embed" not in name and "transformer" not in name:
             param.requires_grad = False
-
+        args.start_epoch = checkpoint['epoch'] + 1
+        
     param_dicts = [
         {
             "params":
